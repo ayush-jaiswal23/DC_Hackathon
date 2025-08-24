@@ -321,32 +321,6 @@
             font-size: 1.2em;
         }
 
-        .download-btns {
-            display: flex;
-            gap: 15px;
-            margin-top: 25px;
-        }
-
-        .download-btn {
-            background: linear-gradient(45deg, #6c757d, #5a6268);
-            color: white;
-            padding: 12px 25px;
-            border: none;
-            border-radius: 25px;
-            cursor: pointer;
-            text-decoration: none;
-            display: inline-flex;
-            align-items: center;
-            font-weight: 600;
-            transition: all 0.3s ease;
-            box-shadow: 0 5px 15px rgba(108, 117, 125, 0.3);
-        }
-
-        .download-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(108, 117, 125, 0.4);
-        }
-
         .error-message {
             background: linear-gradient(135deg, #f8d7da, #f1aeb5);
             border: 2px solid #f1aeb5;
@@ -409,13 +383,6 @@
             </div>
         </div>
 
-        <div class="controls">
-            <div class="control-group">
-                <label for="width">Output Width (characters):</label>
-                <input type="number" id="width" value="80" min="20" max="200">
-            </div>
-            
-            
             
             <button class="process-btn" id="processBtn" onclick="processImage()">
                 <span id="btnText">🚀 Convert to ASCII Art</span>
@@ -435,7 +402,7 @@
             </div>
             
             <div class="result-panel">
-                <h3>🎭 ASCII Art Output</h3>
+                <h3> ASCII Art Output</h3>
                 <div class="ascii-output" id="asciiOutput"></div>
                 <div class="stats" id="asciiStats"></div>
                 <div class="compression-info" id="compressionInfo"></div>

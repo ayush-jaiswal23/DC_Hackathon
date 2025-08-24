@@ -3,9 +3,7 @@ from PIL import Image
 import numpy as np
 import base64
 import io
-import json
 import re
-from collections import Counter, defaultdict
 from typing import Dict, Any
 
 app = Flask(__name__)
@@ -48,7 +46,6 @@ class AdvancedASCIICompressor:
         return '\n'.join(ascii_lines)
     
     def compress_ascii(self, ascii_art: str) -> Dict[str, Any]:
-        """Apply compression algorithm to ASCII art"""
         original_size = len(ascii_art)
         
         compressed = self._run_length_encode(ascii_art)
