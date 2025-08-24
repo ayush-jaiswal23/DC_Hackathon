@@ -1,41 +1,63 @@
 from flask import Flask, request, jsonify, send_file,render_template
+from flask_cors import CORS
 from PIL import Image
 import numpy as np
 import base64
 import io
 import re
 from typing import Dict, Any
+import traceback
+import logging
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
-
+CORS(app, origins=["*"])  
 @app.route("/")
 def index():
-    return render_template("web.html")
+    try:
+        return render_template("web.html")
+    except FileNotFoundError:
+        return "index.html not found. Make sure it's in the same directory as this script."
 
 class AdvancedASCIICompressor:
     
-    def image_to_ascii(self, image_data: bytes) -> str:
-        width= 80
+    def image_to_ascii(self, image_data: bytes, width: int = 80) -> str:
         try:
+            logger.info(f"Processing image, size: {len(image_data)} bytes")
+            
             image = Image.open(io.BytesIO(image_data))
+            logger.info(f"Original image size: {image.size}, mode: {image.mode}")
+            
+            # Convert to grayscale if needed
+            if image.mode != 'L':
+                image = image.convert('L')
+                logger.info("Converted to grayscale")
             
             aspect_ratio = image.height / image.width
             height = int(width * aspect_ratio * 0.5)  
+            logger.info(f"Resizing to: {width}x{height}")
             
             image = image.resize((width, height), Image.Resampling.LANCZOS)
             
             pixels = np.array(image)
+            logger.info(f"Pixel array shape: {pixels.shape}")
             
             chars = ' .:-=+*#%@'
             ascii_art = self._pixels_to_ascii(pixels, chars)
             
+            logger.info(f"Generated ASCII art, length: {len(ascii_art)}")
+            logger.info(f"First 100 chars: {ascii_art[:100]}")
+            
             return ascii_art
             
         except Exception as e:
+            logger.error(f"Image processing error: {str(e)}")
+            logger.error(traceback.format_exc())
             raise ValueError(f"Image processing error: {str(e)}")
     
     def _pixels_to_ascii(self, pixels: np.ndarray, chars: str) -> str:
-        
         max_val = len(chars) - 1
         char_indices = (pixels * max_val / 255).astype(int)
         ascii_lines = []
@@ -45,18 +67,25 @@ class AdvancedASCIICompressor:
         
         return '\n'.join(ascii_lines)
     
-    def compress_ascii(self, ascii_art: str) -> Dict[str, Any]:
+    def compress_ascii(self, ascii_art: str, algorithm: str = 'advanced') -> Dict[str, Any]:
         original_size = len(ascii_art)
+        logger.info(f"Compressing ASCII art, original size: {original_size}")
         
-        compressed = self._run_length_encode(ascii_art)
+        if algorithm == 'advanced':
+            compressed = self._run_length_encode(ascii_art)
+        else:
+            compressed = ascii_art  # No compression
         
         compressed_size = len(compressed)
         ratio = original_size / compressed_size if compressed_size > 0 else 1.0
         savings = ((original_size - compressed_size) / original_size * 100) if original_size > 0 else 0.0
         
+        logger.info(f"Compression complete - ratio: {ratio:.2f}, savings: {savings:.1f}%")
+        
         return {
             'compressed_data': compressed,
             'compression_info': {
+                'algorithm': algorithm,
                 'original_size': original_size,
                 'compressed_size': compressed_size,
                 'ratio': round(ratio, 2),
@@ -88,94 +117,86 @@ class AdvancedASCIICompressor:
             i += count
         
         return ''.join(encoded)
-    
-# Initialize compressor
+
 compressor = AdvancedASCIICompressor()
 
-@app.route('/convert', methods=['POST'])
+@app.route('/convert', methods=['POST', 'OPTIONS'])
 def convert_image():
-    """Main API endpoint for image to ASCII conversion with compression"""
+    # Handle preflight CORS request
+    if request.method == 'OPTIONS':
+        logger.info("Handling CORS preflight request")
+        response = jsonify({'status': 'ok'})
+        response.headers.add('Access-Control-Allow-Origin', '*')
+        response.headers.add('Access-Control-Allow-Headers', 'Content-Type')
+        response.headers.add('Access-Control-Allow-Methods', 'POST')
+        return response
+    
     try:
+        logger.info("=== NEW CONVERSION REQUEST ===")
+        logger.info(f"Request method: {request.method}")
+        logger.info(f"Request headers: {dict(request.headers)}")
+        logger.info(f"Request files: {list(request.files.keys())}")
+        logger.info(f"Request form: {dict(request.form)}")
         
-        if 'image' not in request.files:
-            return jsonify({'error': 'No image file provided'}), 400
+        if 'file' not in request.files:
+            logger.error("No 'file' in request.files")
+            return jsonify({'success': False, 'error': 'No file uploaded'}), 400
+            
+        image_file = request.files['file']
+        logger.info(f"Received file: {image_file.filename}")
         
-        image_file = request.files['image']
         if image_file.filename == '':
-            return jsonify({'error': 'No image file selected'}), 400
+            logger.error("Empty filename")
+            return jsonify({'success': False, 'error': 'No image file selected'}), 400
         
         image_data = image_file.read()
+        logger.info(f"Read {len(image_data)} bytes from file")
         
-        ascii_art = compressor.image_to_ascii(image_data)
+        if len(image_data) == 0:
+            logger.error("Empty image data")
+            return jsonify({'success': False, 'error': 'Empty image file'}), 400
         
-        compression_result = compressor.compress_ascii(ascii_art)
+        # Get optional parameters with defaults
+        width = int(request.form.get('width', 80))
+        char_set = request.form.get('char_set', 'standard')
+        compression = request.form.get('compression', 'advanced')
         
-        return jsonify({
+        logger.info(f"Parameters - width: {width}, char_set: {char_set}, compression: {compression}")
+        
+        ascii_art = compressor.image_to_ascii(image_data, width)
+        
+        if not ascii_art:
+            logger.error("ASCII art generation returned empty result")
+            return jsonify({'success': False, 'error': 'Failed to generate ASCII art'}), 500
+        
+        compression_result = compressor.compress_ascii(ascii_art, compression)
+        
+        response_data = {
             'success': True,
             'original_ascii': ascii_art,
             'compressed_ascii': compression_result['compressed_data'],
-            'compression_info': compression_result['compression_info'],
-            
-        })
+            'compression_info': compression_result['compression_info']
+        }
+        
+        logger.info("Conversion completed successfully!")
+        logger.info(f"Response data keys: {list(response_data.keys())}")
+        
+        return jsonify(response_data)
         
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/download/<file_type>', methods=['POST'])
-def download_file(file_type):
-    """Download ASCII file (original or compressed)"""
-    try:
-        data = request.json
-        
-        if file_type == 'original':
-            content = data.get('original_ascii', '')
-            filename = 'ascii_art_original.txt'
-        elif file_type == 'compressed':
-            content = data.get('compressed_ascii', '')
-            filename = 'ascii_art_compressed.txt'
-        else:
-            return jsonify({'error': 'Invalid file type'}), 400
-        
-        # Create file in memory
-        file_obj = io.BytesIO()
-        file_obj.write(content.encode('utf-8'))
-        file_obj.seek(0)
-        
-        return send_file(
-            file_obj,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='text/plain'
-        )
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/decompress', methods=['POST'])
-def decompress_ascii():
-    """Decompress ASCII art (for testing/validation)"""
-    try:
-        data = request.json
-        compressed_data = data.get('compressed_data', '')
-        algorithm = data.get('algorithm', 'advanced')
-        
-        
-        if algorithm == 'none':
-            decompressed = compressed_data
-        else:
-            decompressed = "Decompression not fully implemented in this demo"
-        
-        return jsonify({
-            'success': True,
-            'decompressed_ascii': decompressed
-        })
-        
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Conversion failed: {str(e)}")
+        logger.error(traceback.format_exc())
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/health', methods=['GET'])
 def health_check():
+    logger.info("Health check requested")
     return jsonify({'status': 'healthy', 'service': 'ASCII Art Compressor'})
 
+@app.route('/test', methods=['GET'])
+def test_endpoint():
+    """Simple test endpoint to verify server is working"""
+    logger.info("Test endpoint accessed")
+    return jsonify({'message': 'Server is working!', 'timestamp': str(app.logger)})
 if __name__ == '__main__':
     app.run(debug=True)
