@@ -1,6 +1,6 @@
 This is ACSII image art generator.
 Technology Used:
-Frontend: HTML , TailwindCSS , Bootstrap
+Frontend: HTML , TailwindCSS
 Backend: Flask
 libraries: pillow
 
